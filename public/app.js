@@ -4,26 +4,38 @@ const $=s=>document.querySelector(s),video=$("#video");
 
 function makeRoom(){return Math.random().toString(36).slice(2,8).toUpperCase()}
 function roomFromUrl(){return new URLSearchParams(location.search).get("room")}
-function showWatch(){ $("#home").classList.add("hidden");$("#watch").classList.remove("hidden");$("#copyRoom").classList.remove("hidden") }
-function escapeHtml(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function showWatch(){$("#home").classList.add("hidden");$("#watch").classList.remove("hidden");$("#copyRoom").classList.remove("hidden")}
+function escapeHtml(s){return String(s).replace(/[&<>\\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'\\"':"&quot;","'":"&#39;"}[c]))}
 function badge(ok,label){return '<span class="badge '+(ok?"yes":"no")+'">'+(ok?"✓":"×")+" "+label+"</span>"}
 
 function renderResults(results){
   const el=$("#results");
   if(!results.length){el.innerHTML='<div class="empty">چیزی پیدا نشد 😭</div>';return}
-  el.innerHTML=results.map((m,i)=>'<article class="result"><div class="result-icon">🎬</div><div class="result-info"><h2>'+escapeHtml(m.title)+' <small>'+escapeHtml(m.year)+'</small></h2><p>'+escapeHtml(m.overview)+'</p><div class="badges">'+badge(m.originalAudio,"زبان اصلی")+badge(m.persianSubtitle,"زیرنویس فارسی")+badge(m.persianDub,"دوبله فارسی")+badge(m.playable,"قابل پخش")+'</div><div class="result-actions"><button class="create '+(m.playable?"":"disabled")+'" data-index="'+i+'" '+(m.playable?"":"disabled")+'>Create Room & Play 🎬</button>'+(m.sourceUrl?'<a target="_blank" rel="noreferrer" href="'+escapeHtml(m.sourceUrl)+'">منبع</a>':"")+'</div></div></article>').join("");
-  el.querySelectorAll(".create").forEach(b=>b.onclick=()=>createRoom(results[Number(b.dataset.index)]));
+  el.innerHTML=results.map((m,i)=>'<article class="result">'+
+    '<div class="result-icon">'+(m.poster?'<img src="'+escapeHtml(m.poster)+'" alt="">':'🎬')+'</div>'+
+    '<div class="result-info"><h2>'+escapeHtml(m.title)+' <small>'+escapeHtml(m.year)+'</small></h2>'+
+    '<p>'+escapeHtml(m.overview)+'</p><div class="badges">'+
+    badge(m.originalAudio,"زبان اصلی")+badge(m.persianSubtitle,"زیرنویس فارسی")+badge(m.persianDub,"دوبله فارسی")+badge(m.playable,"قابل پخش")+
+    '</div><div class="result-actions"><button class="create '+(m.playable?"":"disabled")+'" data-index="'+i+'" '+(m.playable?"":"disabled")+'>'+ 
+    (m.playable?"Create Room & Play 🎬":"منبع مستقیم قابل پخش پیدا نشد")+
+    '</button>'+(m.sourceUrl?'<a target="_blank" rel="noreferrer" href="'+escapeHtml(m.sourceUrl)+'">منبع</a>':"")+
+    '</div></div></article>').join("");
+  el.querySelectorAll(".create:not(.disabled)").forEach(b=>b.onclick=()=>createRoom(results[Number(b.dataset.index)]));
 }
 
 async function search(){
   const q=$("#searchInput").value.trim();if(!q)return;
-  $("#searchStatus").textContent="🤖 دارم سرچ می‌کنم و منابع رو بررسی می‌کنم...";
+  $("#searchStatus").textContent="🔎 دارم از دیتابیس‌های فیلم و منابع عمومی سرچ می‌کنم...";
   $("#searchBtn").disabled=true;
   try{
     const r=await fetch("/api/search?q="+encodeURIComponent(q)),data=await r.json();
     if(!r.ok)throw new Error(data.error||"Search failed");
     renderResults(data.results||[]);
-    $("#searchStatus").textContent=data.results?.length?"نتیجه‌ها آماده‌ان 👀":"نتیجه قابل استفاده پیدا نشد.";
+    const info=[];
+    if(data.meta?.tmdb)info.push("TMDB");
+    if(data.meta?.archive)info.push("Internet Archive");
+    if(data.meta?.ai)info.push("AI");
+    $("#searchStatus").textContent=data.results?.length?("✅ نتیجه‌ها آماده‌ان • "+(info.join(" + ")||"بدون منبع")):"نتیجه قابل استفاده پیدا نشد.";
   }catch(e){$("#searchStatus").textContent="❌ "+e.message}
   finally{$("#searchBtn").disabled=false}
 }
@@ -35,7 +47,10 @@ function setMovie(movie){
   video.pause();video.innerHTML="";
   $("#noVideo").classList.toggle("hidden",!!movie.videoUrl);
   if(movie.videoUrl){
-    const s=document.createElement("source");s.src=movie.videoUrl;s.type="video/mp4";video.appendChild(s);
+    const s=document.createElement("source");s.src=movie.videoUrl;
+    const ext=(movie.videoUrl.match(/\.([a-z0-9]+)(?:\?|$)/i)||[])[1]?.toLowerCase();
+    s.type=ext==="webm"?"video/webm":ext==="ogv"||ext==="ogg"?"video/ogg":"video/mp4";
+    video.appendChild(s);
     if(movie.subtitleFaUrl){const t=document.createElement("track");t.src=movie.subtitleFaUrl;t.kind="subtitles";t.srclang="fa";t.label="فارسی";t.default=true;video.appendChild(t)}
     video.load();
   }
@@ -78,5 +93,7 @@ $("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
 $("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;
 $("#leave").onclick=()=>location.href=location.pathname;
 $("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");socket.emit("chat:message",{roomId,message:input.value});input.value=""};
-fetch("/api/config").then(r=>r.json()).then(x=>{if(!x.aiSearch)$("#searchStatus").textContent="⚠️ اول OPENROUTER_API_KEY رو در Railway اضافه کن."});
+fetch("/api/config").then(r=>r.json()).then(x=>{
+  if(!x.movieSearch)$("#searchStatus").textContent="ℹ️ TMDB_API_KEY اضافه نشده؛ فقط منابع عمومی قابل جست‌وجو هستند.";
+});
 joinRoom();
