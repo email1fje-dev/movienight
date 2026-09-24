@@ -2,23 +2,27 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Movie Night 🍿</title>
-<link rel="stylesheet" href="/style.css">
+<title>Movie Night 🍿</title><link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <div id="app">
-<header><div class="brand">🍿 <span>Movie Night</span></div><button id="copyRoom" class="ghost">🔗 Copy room link</button></header>
+<header><div class="brand">🍿 <span>Movie Night</span></div><button id="copyRoom" class="ghost hidden">🔗 کپی لینک اتاق</button></header>
 <main>
 <section id="home" class="view">
-  <div class="hero"><p class="eyebrow">WATCH TOGETHER</p><h1>Tonight, we watch together.</h1><p>یک فیلم انتخاب کن، لینک اتاق رو بفرست و با دوستات همزمان ببین.</p>
-  <div class="actions"><input id="nameInput" maxlength="24" placeholder="اسمت..." value="Guest"><button id="createRoom">Create Room 🎬</button></div></div>
-  <h2>Choose a movie</h2><div id="movies" class="movie-grid"></div>
+  <div class="hero">
+    <p class="eyebrow">WATCH TOGETHER</p>
+    <h1>یه فیلم انتخاب کن.<br>با هم ببینید.</h1>
+    <p>اسم فیلم رو سرچ کن؛ سیستم اطلاعات زبان، زیرنویس و دوبله رو بررسی می‌کنه و اگر منبع قابل پخش پیدا بشه، اتاق می‌سازه.</p>
+    <div class="search"><input id="searchInput" placeholder="مثلاً Interstellar..."><button id="searchBtn">🔎 Search</button></div>
+    <div id="searchStatus" class="status"></div>
+  </div>
+  <div id="results" class="results"></div>
 </section>
 <section id="watch" class="view hidden">
   <div class="watch-grid">
     <div class="player-card">
-      <div class="player-wrap"><video id="video" controls playsinline></video><div id="noVideo" class="no-video hidden">🎞️<br><span>برای این فیلم هنوز منبع ویدئوی مجاز تنظیم نشده.</span></div></div>
-      <div class="movie-bar"><div><h2 id="title"></h2><p id="meta"></p></div><button id="leave" class="ghost">Leave room</button></div>
+      <div class="player-wrap"><video id="video" controls playsinline></video><div id="noVideo" class="no-video hidden">🎞️<strong>منبع پخش قابل استفاده پیدا نشد</strong><span>این نتیجه اطلاعات فیلم را دارد، اما هنوز یک منبع مجاز و قابل پخش داخل سایت پیدا نشده.</span></div></div>
+      <div class="movie-bar"><div><h2 id="title"></h2><p id="meta"></p></div><button id="leave" class="ghost">خروج</button></div>
     </div>
     <aside class="side">
       <div class="room-code"><span>ROOM</span><b id="roomCode"></b><button id="copyRoom2">Copy</button></div>
