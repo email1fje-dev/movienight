@@ -1,5 +1,5 @@
 const socket=io();
-let roomId=null,isHost=false,currentMovie=null,applyingRemote=false,syncTimer=null;
+let roomId=null,isHost=false,currentMovie=null,applyingRemote=false,syncTimer=null,joinedRoom=false;
 const $=s=>document.querySelector(s),video=$("#video");
 
 function makeRoom(){return Math.random().toString(36).slice(2,8).toUpperCase()}
@@ -61,7 +61,7 @@ async function uploadMovie(){
    const title=$("#movieTitle").value.trim()||file.name.replace(/\.[^.]+$/,"");
    r=await fetch("/api/media/complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomId,path:data.path,title,duration})});
    const result=await r.json();if(!r.ok)throw new Error(result.error||"Complete failed");
-   history.replaceState(null,"",location.pathname+"?room="+roomId);showWatch();setMovie(result.movie);$("#roomCode").textContent=roomId;socket.emit("room:join",{roomId,name:"Host",movie:result.movie});status.textContent="✅ آپلود شد و اتاق ساخته شد.";
+   history.replaceState(null,"",location.pathname+"?room="+roomId);showWatch();setMovie(result.movie);$("#roomCode").textContent=roomId;socket.emit("room:join",{roomId,name:"Host",movie:result.movie});joinedRoom=true;status.textContent="✅ آپلود شد و اتاق ساخته شد.";
  }catch(e){status.textContent="❌ "+(e.message||"Upload failed");isHost=false;roomId=null}finally{$("#uploadBtn").disabled=false}
 }
 async function playByLink(){
@@ -82,7 +82,7 @@ async function playByLink(){
     showWatch();
     setMovie(roomData.movie);
     $("#roomCode").textContent=roomId;
-    socket.emit("room:join",{roomId,name:"Host",movie:roomData.movie});
+    socket.emit("room:join",{roomId,name:"Host",movie:roomData.movie});joinedRoom=true;
     status.textContent="✅ لینک آماده شد و اتاق ذخیره شد";
   }catch(e){status.textContent="❌ "+e.message}
   finally{$("#playLinkBtn").disabled=false}
@@ -131,8 +131,15 @@ function createRoom(movie){
 }
 function joinRoom(){
   const r=roomFromUrl();if(!r)return;
-  roomId=r;isHost=false;showWatch();socket.emit("room:join",{roomId,name:"Guest"});
+  roomId=r;isHost=false;showWatch();
+  if(socket.connected){socket.emit("room:join",{roomId,name:"Guest"});joinedRoom=true;}
 }
+socket.on("connect",()=>{
+  joinedRoom=false;
+  const r=roomFromUrl();
+  if(r){roomId=r;isHost=false;showWatch();socket.emit("room:join",{roomId,name:"Guest"});joinedRoom=true;}
+});
+socket.on("connect_error",e=>console.error("Socket connection error:",e.message));
 function sync(){
   if(!isHost||!currentMovie||applyingRemote)return;
   socket.emit("player:change",{roomId,playing:!video.paused,currentTime:video.currentTime,movie:currentMovie,serverTime:Date.now()});
@@ -180,7 +187,7 @@ socket.on("player:change",s=>{
 });
 socket.on("room:movie",({movie})=>setMovie(movie));
 socket.on("room:users",({users})=>renderUsers(users));
-socket.on("chat:message",m=>{
+socket.on("chat:history",messages=>{\n  $("#messages").innerHTML="";\n  for(const m of messages||[]) appendChat(m);\n});\nfunction appendChat(m){
   const d=document.createElement("div");d.className="msg";d.innerHTML="<b>"+escapeHtml(m.name)+"</b> <span>"+escapeHtml(m.message)+"</span>";
   $("#messages").appendChild(d);$("#messages").scrollTop=$("#messages").scrollHeight;
 });
@@ -193,7 +200,7 @@ $("#playLinkInput").onkeydown=e=>{if(e.key==="Enter")playByLink()};
 $("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
 $("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;$("#enableSound").onclick=enableSound;
 $("#leave").onclick=()=>location.href=location.pathname;
-$("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");socket.emit("chat:message",{roomId,message:input.value});input.value=""};
+$("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");const message=input.value.trim();if(!message||!roomId||!socket.connected)return;socket.emit("chat:message",{roomId,message});input.value=""};
 fetch("/api/config").then(r=>r.json()).then(x=>{
   if(!x.movieSearch)$("#searchStatus").textContent="ℹ️ OMDB_API_KEY اضافه نشده؛ فقط منابع عمومی قابل جست‌وجو هستند.";
 });
