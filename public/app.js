@@ -75,12 +75,15 @@ async function playByLink(){
     if(!r.ok) throw new Error(data.error||"لینک معتبر نیست");
     const source=data.source;
     roomId=makeRoom(); isHost=true;
+    const create=await fetch("/api/play-link/room",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomId,url:source.url,title:"پخش با لینک"})});
+    const roomData=await create.json();
+    if(!create.ok) throw new Error(roomData.error||"ساخت اتاق لینک شکست خورد");
     history.replaceState(null,"",location.pathname+"?room="+roomId);
     showWatch();
-    setMovie({title:"پخش با لینک",year:"",sourceName:source.mode==="embed"?"Embed":"Direct URL",playable:true,videoUrl:source.mode==="video"?source.url:"",embedUrl:source.mode==="embed"?source.embedUrl:"",subtitleFaUrl:""});
+    setMovie(roomData.movie);
     $("#roomCode").textContent=roomId;
-    socket.emit("room:join",{roomId,name:"Guest",movie:currentMovie});
-    status.textContent="✅ لینک آماده شد";
+    socket.emit("room:join",{roomId,name:"Host",movie:roomData.movie});
+    status.textContent="✅ لینک آماده شد و اتاق ذخیره شد";
   }catch(e){status.textContent="❌ "+e.message}
   finally{$("#playLinkBtn").disabled=false}
 }
