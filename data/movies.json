@@ -1,0 +1,12 @@
+[
+  {
+    "id":"demo",
+    "title":"Demo Movie",
+    "year":2026,
+    "genre":"Demo",
+    "poster":"",
+    "videoUrl":"",
+    "subtitleFaUrl":"",
+    "description":"Add a licensed video URL and its ready-made Persian VTT subtitle in this catalog."
+  }
+]
