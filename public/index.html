@@ -12,8 +12,16 @@
   <div class="hero">
     <p class="eyebrow">WATCH TOGETHER</p>
     <h1>یه فیلم انتخاب کن.<br>با هم ببینید.</h1>
-    <p>اسم فیلم رو سرچ کن؛ سیستم اطلاعات زبان، زیرنویس و دوبله رو بررسی می‌کنه و اگر منبع قابل پخش پیدا بشه، اتاق می‌سازه.</p>
+    <p>فیلمی که حق پخش/اشتراک‌گذاریش رو داری انتخاب کن، روی Storage آپلود می‌شه و همهٔ اعضای اتاق از همان فایل پخش می‌کنن.</p>
     <div class="search"><input id="searchInput" placeholder="مثلاً Interstellar..."><button id="searchBtn">🔎 Search</button></div>
+    <div class="link-play">
+      <div class="link-play-title">🎞️ آپلود فیلم برای اتاق</div>
+      <p>فقط فایل ویدیویی مجاز خودت را انتخاب کن. فایل مستقیماً به Supabase Storage می‌رود.</p>
+      <input id="movieFile" type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.ogg">
+      <input id="movieTitle" placeholder="اسم فیلم (اختیاری)">
+      <button id="uploadBtn">☁️ آپلود و ساخت اتاق</button>
+      <div id="uploadProgress" class="status"></div>
+    </div>
     <div class="link-play">
       <div class="link-play-title">🔗 پخش با لینک</div>
       <p>لینک مستقیم ویدیو یا لینک صفحه‌ای که اجازهٔ Embed دارد وارد کن.</p>
