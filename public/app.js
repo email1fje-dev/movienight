@@ -61,6 +61,13 @@ async function playByLink(){
   finally{$("#playLinkBtn").disabled=false}
 }
 
+function applyRoomTime(time){
+  const t=Math.max(0,Number(time)||0);
+  applyingRemote=true;
+  const apply=()=>{try{video.currentTime=t}catch{} finally{applyingRemote=false}};
+  if(video.readyState>=1) apply();
+  else video.addEventListener("loadedmetadata",apply,{once:true});
+}
 function setMovie(movie){
   currentMovie=movie;
   $("#title").textContent=movie.title;
@@ -121,13 +128,18 @@ function enableSound(){video.muted=false;video.play().catch(()=>{});$("#enableSo
 socket.on("room:state",s=>{
   isHost=s.isHost;$("#roomCode").textContent=roomId;renderUsers(s.users);
   if(s.movie)setMovie(s.movie);
-  setTimeout(()=>{
-    applyingRemote=true;
-    try{video.currentTime=s.currentTime||0}catch{}
-    applyingRemote=false;
-    if(s.playing)ensureMobilePlayback();
+  const roomTime=Number(s.currentTime)||0;
+  if(s.movie?.videoUrl){
+    const waitForMedia=()=>{
+      applyRoomTime(roomTime);
+      if(s.playing)ensureMobilePlayback();
+      if(isHost)startSync();
+    };
+    if(video.readyState>=1) waitForMedia();
+    else video.addEventListener("loadedmetadata",waitForMedia,{once:true});
+  } else {
     if(isHost)startSync();
-  },250);
+  }
 });
 socket.on("player:change",s=>{
   if(isHost)return;
