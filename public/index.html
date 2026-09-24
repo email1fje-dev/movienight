@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Movie Night 🍿</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="app">
+<header><div class="brand">🍿 <span>Movie Night</span></div><button id="copyRoom" class="ghost">🔗 Copy room link</button></header>
+<main>
+<section id="home" class="view">
+  <div class="hero"><p class="eyebrow">WATCH TOGETHER</p><h1>Tonight, we watch together.</h1><p>یک فیلم انتخاب کن، لینک اتاق رو بفرست و با دوستات همزمان ببین.</p>
+  <div class="actions"><input id="nameInput" maxlength="24" placeholder="اسمت..." value="Guest"><button id="createRoom">Create Room 🎬</button></div></div>
+  <h2>Choose a movie</h2><div id="movies" class="movie-grid"></div>
+</section>
+<section id="watch" class="view hidden">
+  <div class="watch-grid">
+    <div class="player-card">
+      <div class="player-wrap"><video id="video" controls playsinline></video><div id="noVideo" class="no-video hidden">🎞️<br><span>برای این فیلم هنوز منبع ویدئوی مجاز تنظیم نشده.</span></div></div>
+      <div class="movie-bar"><div><h2 id="title"></h2><p id="meta"></p></div><button id="leave" class="ghost">Leave room</button></div>
+    </div>
+    <aside class="side">
+      <div class="room-code"><span>ROOM</span><b id="roomCode"></b><button id="copyRoom2">Copy</button></div>
+      <div class="people"><h3>👥 Watching <span id="count">0</span></h3><div id="users"></div></div>
+      <div class="chat"><h3>💬 Live Chat</h3><div id="messages"></div><form id="chatForm"><input id="chatInput" maxlength="500" placeholder="پیام..."><button>➤</button></form></div>
+    </aside>
+  </div>
+</section>
+</main>
+</div>
+<script src="/socket.io/socket.io.js"></script><script src="/app.js"></script>
+</body></html>
