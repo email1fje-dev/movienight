@@ -66,9 +66,11 @@ function setMovie(movie){
   $("#title").textContent=movie.title;
   $("#meta").textContent=[movie.year,movie.sourceName].filter(Boolean).join(" • ");
   video.pause();video.innerHTML="";
+  video.classList.add("hidden");
   const oldFrame=$("#embedFrame"); if(oldFrame) oldFrame.remove();
   $("#noVideo").classList.toggle("hidden",!!movie.videoUrl||!!movie.embedUrl);
   if(movie.videoUrl){
+    video.classList.remove("hidden");
     const s=document.createElement("source");s.src=movie.videoUrl;
     const ext=(movie.videoUrl.match(/\.([a-z0-9]+)(?:\?|$)/i)||[])[1]?.toLowerCase();
     s.type=ext==="webm"?"video/webm":ext==="ogv"||ext==="ogg"?"video/ogg":"video/mp4";
@@ -76,6 +78,8 @@ function setMovie(movie){
     if(movie.subtitleFaUrl){const t=document.createElement("track");t.src=movie.subtitleFaUrl;t.kind="subtitles";t.srclang="fa";t.label="فارسی";t.default=true;video.appendChild(t)}
     video.load();
   } else if(movie.embedUrl){
+    video.pause();
+    video.classList.add("hidden");
     const frame=document.createElement("iframe");
     frame.id="embedFrame"; frame.src=movie.embedUrl; frame.title=movie.title||"Video";
     frame.allow="autoplay; fullscreen; picture-in-picture"; frame.allowFullscreen=true;
