@@ -40,6 +40,30 @@ async function search(){
   finally{$("#searchBtn").disabled=false}
 }
 
+async function uploadMovie(){
+ const file=$("#movieFile").files[0],status=$("#uploadProgress");if(!file)return status.textContent="❌ اول فایل فیلم را انتخاب کن.";
+ if(file.size>20*1024*1024*1024)return status.textContent="❌ فایل خیلی بزرگ است.";
+ if(!/\.(mp4|webm|ogv|ogg)$/i.test(file.name))return status.textContent="❌ فرمت مجاز: MP4/WebM/OGV/OGG.";
+ status.textContent="⏳ ساخت لینک آپلود...";$("#uploadBtn").disabled=true;
+ try{
+   roomId=makeRoom();isHost=true;
+   let r=await fetch("/api/media/upload-url",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomId,filename:file.name,contentType:file.type||"video/mp4"})});
+   let data=await r.json();if(!r.ok)throw new Error(data.error||"Upload URL failed");
+   if(!window.supabase?.createClient)throw new Error("Supabase client لود نشد.");
+   const cfg=await (await fetch("/api/media/config")).json();
+   if(!cfg.configured||!cfg.publishableKey||!cfg.url)throw new Error("تنظیمات Supabase کامل نیست.");
+   const sb=window.supabase.createClient(cfg.url,cfg.publishableKey);
+   status.textContent="☁️ در حال آپلود مستقیم به Supabase...";
+   const {error:upErr}=await sb.storage.from(cfg.bucket).uploadToSignedUrl(data.path,data.token,file);
+   if(upErr)throw upErr;
+   let duration=0;const temp=document.createElement("video");temp.preload="metadata";temp.src=URL.createObjectURL(file);
+   await new Promise(resolve=>{temp.onloadedmetadata=()=>{duration=temp.duration||0;resolve()};temp.onerror=resolve});
+   const title=$("#movieTitle").value.trim()||file.name.replace(/\.[^.]+$/,"");
+   r=await fetch("/api/media/complete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomId,path:data.path,title,duration})});
+   const result=await r.json();if(!r.ok)throw new Error(result.error||"Complete failed");
+   history.replaceState(null,"",location.pathname+"?room="+roomId);showWatch();setMovie(result.movie);$("#roomCode").textContent=roomId;socket.emit("room:join",{roomId,name:"Host",movie:result.movie});status.textContent="✅ آپلود شد و اتاق ساخته شد.";
+ }catch(e){status.textContent="❌ "+(e.message||"Upload failed");isHost=false;roomId=null}finally{$("#uploadBtn").disabled=false}
+}
 async function playByLink(){
   const input=$("#playLinkInput"), status=$("#playLinkStatus");
   const url=input.value.trim(); if(!url) return;
@@ -160,7 +184,7 @@ socket.on("chat:message",m=>{
 function renderUsers(users){$("#users").innerHTML=users.map(u=>'<div class="user">'+escapeHtml(u)+"</div>").join("");$("#count").textContent=users.length}
 async function copy(){await navigator.clipboard?.writeText(location.href);$("#copyRoom").textContent="کپی شد ✓";setTimeout(()=>$("#copyRoom").textContent="🔗 کپی لینک اتاق",1200)}
 
-$("#searchBtn").onclick=search;
+$("#searchBtn").onclick=search;$("#uploadBtn").onclick=uploadMovie;
 $("#playLinkBtn").onclick=playByLink;
 $("#playLinkInput").onkeydown=e=>{if(e.key==="Enter")playByLink()};
 $("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
