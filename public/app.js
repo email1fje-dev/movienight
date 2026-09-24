@@ -32,7 +32,7 @@ async function search(){
     if(!r.ok)throw new Error(data.error||"Search failed");
     renderResults(data.results||[]);
     const info=[];
-    if(data.meta?.tmdb)info.push("TMDB");
+    if(data.meta?.omdb)info.push("OMDb");
     if(data.meta?.archive)info.push("Internet Archive");
     if(data.meta?.ai)info.push("AI");
     $("#searchStatus").textContent=data.results?.length?("✅ نتیجه‌ها آماده‌ان • "+(info.join(" + ")||"بدون منبع")):"نتیجه قابل استفاده پیدا نشد.";
@@ -94,6 +94,6 @@ $("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;
 $("#leave").onclick=()=>location.href=location.pathname;
 $("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");socket.emit("chat:message",{roomId,message:input.value});input.value=""};
 fetch("/api/config").then(r=>r.json()).then(x=>{
-  if(!x.movieSearch)$("#searchStatus").textContent="ℹ️ TMDB_API_KEY اضافه نشده؛ فقط منابع عمومی قابل جست‌وجو هستند.";
+  if(!x.movieSearch)$("#searchStatus").textContent="ℹ️ OMDB_API_KEY اضافه نشده؛ فقط منابع عمومی قابل جست‌وجو هستند.";
 });
 joinRoom();
