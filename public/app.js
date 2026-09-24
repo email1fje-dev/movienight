@@ -1,5 +1,5 @@
 const socket=io();
-let roomId=null,isHost=false,currentMovie=null;
+let roomId=null,isHost=false,currentMovie=null,applyingRemote=false,syncTimer=null;
 const $=s=>document.querySelector(s),video=$("#video");
 
 function makeRoom(){return Math.random().toString(36).slice(2,8).toUpperCase()}
@@ -95,18 +95,45 @@ function joinRoom(){
   const r=roomFromUrl();if(!r)return;
   roomId=r;isHost=false;showWatch();socket.emit("room:join",{roomId,name:"Guest"});
 }
-function sync(){if(isHost&&currentMovie)socket.emit("player:change",{roomId,playing:!video.paused,currentTime:video.currentTime,movie:currentMovie})}
+function sync(){
+  if(!isHost||!currentMovie||applyingRemote)return;
+  socket.emit("player:change",{roomId,playing:!video.paused,currentTime:video.currentTime,movie:currentMovie,serverTime:Date.now()});
+}
 video.addEventListener("play",sync);video.addEventListener("pause",sync);video.addEventListener("seeked",sync);
+function startSync(){
+  clearInterval(syncTimer);
+  syncTimer=setInterval(()=>{if(isHost&&!video.paused)sync()},1000);
+}
+function ensureMobilePlayback(){
+  if(video.src||video.querySelector("source")){
+    video.muted=true;
+    video.play().then(()=>{
+      const btn=$("#enableSound"); if(btn)btn.classList.remove("hidden");
+    }).catch(()=>{});
+  }
+}
+function enableSound(){video.muted=false;video.play().catch(()=>{});$("#enableSound").classList.add("hidden");sync()}
 
 socket.on("room:state",s=>{
   isHost=s.isHost;$("#roomCode").textContent=roomId;renderUsers(s.users);
   if(s.movie)setMovie(s.movie);
-  setTimeout(()=>{video.currentTime=s.currentTime||0;if(s.playing)video.play().catch(()=>{})},200);
+  setTimeout(()=>{
+    applyingRemote=true;
+    try{video.currentTime=s.currentTime||0}catch{}
+    applyingRemote=false;
+    if(s.playing)ensureMobilePlayback();
+    if(isHost)startSync();
+  },250);
 });
 socket.on("player:change",s=>{
+  if(isHost)return;
   if(s.movie&&!currentMovie?.title)setMovie(s.movie);
-  if(Math.abs(video.currentTime-s.currentTime)>1)video.currentTime=s.currentTime;
-  if(s.playing)video.play().catch(()=>{});else video.pause();
+  applyingRemote=true;
+  try{
+    if(Math.abs(video.currentTime-(s.currentTime||0))>0.75)video.currentTime=s.currentTime||0;
+    if(s.playing){video.muted=true;video.play().catch(()=>{});}
+    else video.pause();
+  }finally{setTimeout(()=>applyingRemote=false,50)}
 });
 socket.on("room:movie",({movie})=>setMovie(movie));
 socket.on("room:users",({users})=>renderUsers(users));
@@ -121,7 +148,7 @@ $("#searchBtn").onclick=search;
 $("#playLinkBtn").onclick=playByLink;
 $("#playLinkInput").onkeydown=e=>{if(e.key==="Enter")playByLink()};
 $("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
-$("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;
+$("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;$("#enableSound").onclick=enableSound;
 $("#leave").onclick=()=>location.href=location.pathname;
 $("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");socket.emit("chat:message",{roomId,message:input.value});input.value=""};
 fetch("/api/config").then(r=>r.json()).then(x=>{
