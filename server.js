@@ -36,27 +36,13 @@ function isAuthorizedArchiveItem(meta){
   return /public domain|publicdomain|creative commons|creativecommons|cc by|cc0|no known copyright/i.test(text);
 }
 
-async function tmdbSearch(q){
-  const key=process.env.TMDB_API_KEY;
+async function omdbSearch(q){
+  const key=process.env.OMDB_API_KEY;
   if(!key) return [];
-  const url="https://api.themoviedb.org/3/search/movie?query="+encodeURIComponent(q)+"&include_adult=false&language=en-US&page=1";
-  const r=await fetch(url,{headers:{Authorization:"Bearer "+key,accept:"application/json"}});
-  const data=await r.json();
-  if(!r.ok) throw new Error(data?.status_message||("TMDB HTTP "+r.status));
-  return (data.results||[]).slice(0,8).map(m=>({
-    title:cleanText(m.title,160),
-    year:String(m.release_date||"").slice(0,4),
-    overview:cleanText(m.overview,400),
-    originalAudio:true,
-    persianSubtitle:false,
-    persianDub:false,
-    playable:false,
-    videoUrl:"",
-    subtitleFaUrl:"",
-    sourceName:"TMDB",
-    sourceUrl:m.id?"https://www.themoviedb.org/movie/"+m.id:"",
-    poster:m.poster_path?"https://image.tmdb.org/t/p/w500"+m.poster_path:""
-  }));
+  const url="https://www.omdbapi.com/?apikey="+encodeURIComponent(key)+"&s="+encodeURIComponent(q)+"&type=movie&page=1";
+  const r=await fetch(url); const data=await r.json();
+  if(!r.ok || data.Response==="False") return [];
+  return (data.Search||[]).slice(0,8).map(m=>({title:cleanText(m.Title,160),year:String(m.Year||"").slice(0,4),overview:"",originalAudio:true,persianSubtitle:false,persianDub:false,playable:false,videoUrl:"",subtitleFaUrl:"",sourceName:"OMDb",sourceUrl:m.imdbID?"https://www.imdb.com/title/"+m.imdbID:"",poster:m.Poster&&m.Poster!=="N/A"?m.Poster:""}));
 }
 
 async function archiveSearch(q){
@@ -132,7 +118,7 @@ async function freeAiEnrich(query,candidates){
 }
 
 app.get("/api/config",(req,res)=>res.json({
-  movieSearch:!!process.env.TMDB_API_KEY,
+  movieSearch:!!process.env.OMDB_API_KEY,
   archiveSearch:true,
   aiEnrichment:!!process.env.OPENROUTER_API_KEY
 }));
@@ -142,11 +128,11 @@ app.get("/api/search",async(req,res)=>{
   if(!q) return res.status(400).json({error:"Enter a movie name."});
 
   try{
-    const [tmdb,archive]=await Promise.all([
-      tmdbSearch(q).catch(e=>{console.error("TMDB search:",e.message);return []}),
+    const [omdb,archive]=await Promise.all([
+      omdbSearch(q).catch(e=>{console.error("OMDb search:",e.message);return []}),
       archiveSearch(q).catch(e=>{console.error("Archive search:",e.message);return []})
     ]);
-    let results=[...archive,...tmdb];
+    let results=[...archive,...omdb];
     const seen=new Set();
     results=results.filter(x=>{
       const k=(x.title+"|"+x.year).toLowerCase();
@@ -155,7 +141,7 @@ app.get("/api/search",async(req,res)=>{
       return true;
     }).slice(0,12);
     results=await freeAiEnrich(q,results);
-    res.json({results,meta:{tmdb:tmdb.length>0,archive:archive.length>0,ai:!!process.env.OPENROUTER_API_KEY}});
+    res.json({results,meta:{omdb:omdb.length>0,archive:archive.length>0,ai:!!process.env.OPENROUTER_API_KEY}});
   }catch(error){
     console.error("Movie search error:",error);
     res.status(502).json({error:"Movie search failed.",details:error.message});
