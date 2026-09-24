@@ -1,26 +1,82 @@
 const socket=io();
-let movies=[],selectedMovie=null,roomId=null,isHost=false;
-const $=s=>document.querySelector(s);
-const video=$("#video");
+let roomId=null,isHost=false,currentMovie=null;
+const $=s=>document.querySelector(s),video=$("#video");
 
 function makeRoom(){return Math.random().toString(36).slice(2,8).toUpperCase()}
 function roomFromUrl(){return new URLSearchParams(location.search).get("room")}
-function showWatch(){ $("#home").classList.add("hidden"); $("#watch").classList.remove("hidden") }
-function setMovie(movie){selectedMovie=movie;$("#title").textContent=movie.title;$("#meta").textContent=[movie.year,movie.genre].filter(Boolean).join(" • ");video.pause();video.innerHTML="";$("#noVideo").classList.toggle("hidden",!!movie.videoUrl);if(movie.videoUrl){const s=document.createElement("source");s.src=movie.videoUrl;s.type="video/mp4";video.appendChild(s);if(movie.subtitleFaUrl){const t=document.createElement("track");t.src=movie.subtitleFaUrl;t.kind="subtitles";t.srclang="fa";t.label="فارسی";t.default=true;video.appendChild(t)}video.load()}}
-function renderMovies(){const el=$("#movies");el.innerHTML=movies.map(m=>`<article class="movie"><div class="poster">🎬</div><div class="movie-body"><h3>${m.title}</h3><p>${m.year||""} ${m.genre?"• "+m.genre:""}</p><button data-id="${m.id}">Watch together</button></div></article>`).join("");el.querySelectorAll("button").forEach(b=>b.onclick=()=>{selectedMovie=movies.find(x=>x.id===b.dataset.id);createOrJoin()})}
-function createOrJoin(){roomId=roomId||makeRoom();isHost=!roomFromUrl();history.replaceState(null,"",location.pathname+"?room="+roomId);showWatch();setMovie(selectedMovie||movies[0]);socket.emit("room:join",{roomId,name:$("#nameInput").value||"Guest",movieId:selectedMovie?.id})}
-async function copy(){await navigator.clipboard?.writeText(location.href);$("#copyRoom").textContent="Copied! ✓";setTimeout(()=>$("#copyRoom").textContent="🔗 Copy room link",1200)}
-function sync(send=true){if(!selectedMovie)return; if(send) socket.emit("player:change",{roomId,playing:!video.paused,currentTime:video.currentTime,movieId:selectedMovie.id})}
-video.addEventListener("play",()=>sync());video.addEventListener("pause",()=>sync());video.addEventListener("seeked",()=>sync());
-socket.on("room:state",s=>{if(s.movieId){const m=movies.find(x=>x.id===s.movieId);if(m){setMovie(m);selectedMovie=m}}$("#roomCode").textContent=roomId;$("#count").textContent=s.users.length;renderUsers(s.users);setTimeout(()=>{video.currentTime=s.currentTime||0;if(s.playing)video.play().catch(()=>{})},200)});
-socket.on("player:change",s=>{if(s.movieId&&s.movieId!==selectedMovie?.id){const m=movies.find(x=>x.id===s.movieId);if(m){setMovie(m);selectedMovie=m}}if(Math.abs(video.currentTime-s.currentTime)>1)video.currentTime=s.currentTime;if(s.playing&&!video.paused) return;if(s.playing)video.play().catch(()=>{});else video.pause()});
-socket.on("room:movie",({movieId})=>{const m=movies.find(x=>x.id===movieId);if(m){setMovie(m);selectedMovie=m}});
-socket.on("room:users",({users})=>{renderUsers(users);$("#count").textContent=users.length});
-socket.on("chat:message",m=>{const d=document.createElement("div");d.className="msg";d.innerHTML=`<b>${escapeHtml(m.name)}</b> <span>${escapeHtml(m.message)}</span>`;$("#messages").appendChild(d);$("#messages").scrollTop=$("#messages").scrollHeight});
-function renderUsers(users){$("#users").innerHTML=users.map(u=>`<div class="user">${escapeHtml(u)}</div>`).join("")}
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-$("#createRoom").onclick=()=>{if(!selectedMovie)selectedMovie=movies[0];createOrJoin()};
+function showWatch(){ $("#home").classList.add("hidden");$("#watch").classList.remove("hidden");$("#copyRoom").classList.remove("hidden") }
+function escapeHtml(s){return String(s).replace(/[&<>\"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function badge(ok,label){return '<span class="badge '+(ok?"yes":"no")+'">'+(ok?"✓":"×")+" "+label+"</span>"}
+
+function renderResults(results){
+  const el=$("#results");
+  if(!results.length){el.innerHTML='<div class="empty">چیزی پیدا نشد 😭</div>';return}
+  el.innerHTML=results.map((m,i)=>'<article class="result"><div class="result-icon">🎬</div><div class="result-info"><h2>'+escapeHtml(m.title)+' <small>'+escapeHtml(m.year)+'</small></h2><p>'+escapeHtml(m.overview)+'</p><div class="badges">'+badge(m.originalAudio,"زبان اصلی")+badge(m.persianSubtitle,"زیرنویس فارسی")+badge(m.persianDub,"دوبله فارسی")+badge(m.playable,"قابل پخش")+'</div><div class="result-actions"><button class="create '+(m.playable?"":"disabled")+'" data-index="'+i+'" '+(m.playable?"":"disabled")+'>Create Room & Play 🎬</button>'+(m.sourceUrl?'<a target="_blank" rel="noreferrer" href="'+escapeHtml(m.sourceUrl)+'">منبع</a>':"")+'</div></div></article>').join("");
+  el.querySelectorAll(".create").forEach(b=>b.onclick=()=>createRoom(results[Number(b.dataset.index)]));
+}
+
+async function search(){
+  const q=$("#searchInput").value.trim();if(!q)return;
+  $("#searchStatus").textContent="🤖 دارم سرچ می‌کنم و منابع رو بررسی می‌کنم...";
+  $("#searchBtn").disabled=true;
+  try{
+    const r=await fetch("/api/search?q="+encodeURIComponent(q)),data=await r.json();
+    if(!r.ok)throw new Error(data.error||"Search failed");
+    renderResults(data.results||[]);
+    $("#searchStatus").textContent=data.results?.length?"نتیجه‌ها آماده‌ان 👀":"نتیجه قابل استفاده پیدا نشد.";
+  }catch(e){$("#searchStatus").textContent="❌ "+e.message}
+  finally{$("#searchBtn").disabled=false}
+}
+
+function setMovie(movie){
+  currentMovie=movie;
+  $("#title").textContent=movie.title;
+  $("#meta").textContent=[movie.year,movie.sourceName].filter(Boolean).join(" • ");
+  video.pause();video.innerHTML="";
+  $("#noVideo").classList.toggle("hidden",!!movie.videoUrl);
+  if(movie.videoUrl){
+    const s=document.createElement("source");s.src=movie.videoUrl;s.type="video/mp4";video.appendChild(s);
+    if(movie.subtitleFaUrl){const t=document.createElement("track");t.src=movie.subtitleFaUrl;t.kind="subtitles";t.srclang="fa";t.label="فارسی";t.default=true;video.appendChild(t)}
+    video.load();
+  }
+}
+function createRoom(movie){
+  if(!movie?.playable)return;
+  roomId=makeRoom();isHost=true;
+  history.replaceState(null,"",location.pathname+"?room="+roomId);
+  showWatch();setMovie(movie);$("#roomCode").textContent=roomId;
+  socket.emit("room:join",{roomId,name:"Guest",movie});
+}
+function joinRoom(){
+  const r=roomFromUrl();if(!r)return;
+  roomId=r;isHost=false;showWatch();socket.emit("room:join",{roomId,name:"Guest"});
+}
+function sync(){if(isHost&&currentMovie)socket.emit("player:change",{roomId,playing:!video.paused,currentTime:video.currentTime,movie:currentMovie})}
+video.addEventListener("play",sync);video.addEventListener("pause",sync);video.addEventListener("seeked",sync);
+
+socket.on("room:state",s=>{
+  isHost=s.isHost;$("#roomCode").textContent=roomId;renderUsers(s.users);
+  if(s.movie)setMovie(s.movie);
+  setTimeout(()=>{video.currentTime=s.currentTime||0;if(s.playing)video.play().catch(()=>{})},200);
+});
+socket.on("player:change",s=>{
+  if(s.movie&&!currentMovie?.title)setMovie(s.movie);
+  if(Math.abs(video.currentTime-s.currentTime)>1)video.currentTime=s.currentTime;
+  if(s.playing)video.play().catch(()=>{});else video.pause();
+});
+socket.on("room:movie",({movie})=>setMovie(movie));
+socket.on("room:users",({users})=>renderUsers(users));
+socket.on("chat:message",m=>{
+  const d=document.createElement("div");d.className="msg";d.innerHTML="<b>"+escapeHtml(m.name)+"</b> <span>"+escapeHtml(m.message)+"</span>";
+  $("#messages").appendChild(d);$("#messages").scrollTop=$("#messages").scrollHeight;
+});
+function renderUsers(users){$("#users").innerHTML=users.map(u=>'<div class="user">'+escapeHtml(u)+"</div>").join("");$("#count").textContent=users.length}
+async function copy(){await navigator.clipboard?.writeText(location.href);$("#copyRoom").textContent="کپی شد ✓";setTimeout(()=>$("#copyRoom").textContent="🔗 کپی لینک اتاق",1200)}
+
+$("#searchBtn").onclick=search;
+$("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
 $("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;
-$("#leave").onclick=()=>{location.href=location.pathname};
+$("#leave").onclick=()=>location.href=location.pathname;
 $("#chatForm").onsubmit=e=>{e.preventDefault();const input=$("#chatInput");socket.emit("chat:message",{roomId,message:input.value});input.value=""};
-fetch("/api/movies").then(r=>r.json()).then(data=>{movies=data;renderMovies();const r=roomFromUrl();if(r){roomId=r;isHost=false;selectedMovie=movies[0];createOrJoin()}});
+fetch("/api/config").then(r=>r.json()).then(x=>{if(!x.aiSearch)$("#searchStatus").textContent="⚠️ اول OPENROUTER_API_KEY رو در Railway اضافه کن."});
+joinRoom();
