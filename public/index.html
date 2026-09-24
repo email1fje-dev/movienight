@@ -14,12 +14,18 @@
     <h1>یه فیلم انتخاب کن.<br>با هم ببینید.</h1>
     <p>فیلمی که حق پخش/اشتراک‌گذاریش رو داری انتخاب کن، روی Storage آپلود می‌شه و همهٔ اعضای اتاق از همان فایل پخش می‌کنن.</p>
     <div class="search"><input id="searchInput" placeholder="مثلاً Interstellar..."><button id="searchBtn">🔎 Search</button></div>
-    <div class="link-play">
-      <div class="link-play-title">🎞️ آپلود فیلم برای اتاق</div>
-      <p>فقط فایل ویدیویی مجاز خودت را انتخاب کن. فایل مستقیماً به Supabase Storage می‌رود.</p>
-      <input id="movieFile" type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.ogg">
-      <input id="movieTitle" placeholder="اسم فیلم (اختیاری)">
-      <button id="uploadBtn">☁️ آپلود و ساخت اتاق</button>
+    <div class="media-card upload-card">
+      <div class="media-card-head"><div class="media-icon">🎬</div><div><div class="media-card-title">آپلود فیلم</div><div class="media-card-subtitle">فیلم مجازت رو مستقیم روی Storage بذار</div></div></div>
+      <label class="drop-zone" id="dropZone" for="movieFile">
+        <div class="drop-icon">↑</div><strong id="fileName">فایل ویدیو رو اینجا بنداز</strong>
+        <span id="fileHint">یا برای انتخاب فایل کلیک کن • MP4 / WebM / OGV / OGG</span>
+        <input id="movieFile" type="file" accept="video/mp4,video/webm,video/ogg,.mp4,.webm,.ogv,.ogg">
+      </label>
+      <div class="upload-row">
+        <input id="movieTitle" placeholder="اسم فیلم (اختیاری)">
+        <button id="uploadBtn">☁️ ساخت اتاق و آپلود</button>
+      </div>
+      <div class="upload-progress"><div id="uploadBar"></div></div>
       <div id="uploadProgress" class="status"></div>
     </div>
     <div class="link-play">
