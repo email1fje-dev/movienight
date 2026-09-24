@@ -19,60 +19,146 @@ function roomState(room){
 }
 function cleanUrl(value){
   if(typeof value!=="string") return "";
-  return value.trim().slice(0,2000);
+  try{
+    const u=new URL(value.trim());
+    if(u.protocol!=="http:"&&u.protocol!=="https:") return "";
+    return u.toString().slice(0,2000);
+  }catch{return ""}
+}
+function cleanText(value,max=400){
+  return String(value||"").replace(/<[^>]*>/g,"").trim().slice(0,max);
+}
+function isPlayableFile(name){
+  return /\.(mp4|webm|ogv|ogg)(\?|$)/i.test(name||"");
+}
+function isAuthorizedArchiveItem(meta){
+  const text=[meta?.licenseurl,meta?.rights,meta?.description].filter(Boolean).join(" ").toLowerCase();
+  return /public domain|publicdomain|creative commons|creativecommons|cc by|cc0|no known copyright/i.test(text);
 }
 
-app.get("/api/config",(req,res)=>res.json({aiSearch:!!process.env.OPENROUTER_API_KEY}));
+async function tmdbSearch(q){
+  const key=process.env.TMDB_API_KEY;
+  if(!key) return [];
+  const url="https://api.themoviedb.org/3/search/movie?query="+encodeURIComponent(q)+"&include_adult=false&language=en-US&page=1";
+  const r=await fetch(url,{headers:{Authorization:"Bearer "+key,accept:"application/json"}});
+  const data=await r.json();
+  if(!r.ok) throw new Error(data?.status_message||("TMDB HTTP "+r.status));
+  return (data.results||[]).slice(0,8).map(m=>({
+    title:cleanText(m.title,160),
+    year:String(m.release_date||"").slice(0,4),
+    overview:cleanText(m.overview,400),
+    originalAudio:true,
+    persianSubtitle:false,
+    persianDub:false,
+    playable:false,
+    videoUrl:"",
+    subtitleFaUrl:"",
+    sourceName:"TMDB",
+    sourceUrl:m.id?"https://www.themoviedb.org/movie/"+m.id:"",
+    poster:m.poster_path?"https://image.tmdb.org/t/p/w500"+m.poster_path:""
+  }));
+}
+
+async function archiveSearch(q){
+  const url="https://archive.org/advancedsearch.php?q="+encodeURIComponent('title:("'+q+'") AND mediatype:movies')+"&fl[]=identifier,title,description,year,licenseurl,rights&rows=8&page=1&output=json";
+  const r=await fetch(url);
+  const data=await r.json();
+  if(!r.ok) throw new Error("Internet Archive search failed");
+  const docs=data?.response?.docs||[];
+  const out=[];
+  for(const item of docs){
+    const metaUrl="https://archive.org/metadata/"+encodeURIComponent(item.identifier);
+    try{
+      const mr=await fetch(metaUrl);
+      const meta=await mr.json();
+      if(!isAuthorizedArchiveItem({...item,...meta})) continue;
+      const file=(meta.files||[]).find(f=>isPlayableFile(f.name)&&!f.private);
+      if(!file) continue;
+      const videoUrl=cleanUrl("https://archive.org/download/"+encodeURIComponent(item.identifier)+"/"+encodeURIComponent(file.name));
+      if(!videoUrl) continue;
+      out.push({
+        title:cleanText(item.title||q,160),
+        year:String(item.year||"").slice(0,4),
+        overview:cleanText(item.description||"",400),
+        originalAudio:true,
+        persianSubtitle:false,
+        persianDub:false,
+        playable:true,
+        videoUrl,
+        subtitleFaUrl:"",
+        sourceName:"Internet Archive",
+        sourceUrl:"https://archive.org/details/"+encodeURIComponent(item.identifier),
+        poster:""
+      });
+    }catch{}
+  }
+  return out;
+}
+
+async function freeAiEnrich(query,candidates){
+  if(!process.env.OPENROUTER_API_KEY||!candidates.length) return candidates;
+  const compact=candidates.map((x,i)=>({i,title:x.title,year:x.year,overview:x.overview,sourceName:x.sourceName,playable:x.playable})); 
+  const prompt="You are a movie metadata assistant. The server already searched trusted APIs; do NOT browse the web and do NOT invent sources. Given the user's movie query and candidate records below, return ONLY JSON: {results:[{i,originalAudio,persianSubtitle,persianDub}]}. Only mark a field true when it is reasonably supported by the supplied record; otherwise false. Persian subtitle/dub are false unless the supplied record explicitly supports them.\nQuery: "+query+"\nCandidates: "+JSON.stringify(compact);
+  const response=await fetch("https://openrouter.ai/api/v1/chat/completions",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+process.env.OPENROUTER_API_KEY,
+      "Content-Type":"application/json",
+      "HTTP-Referer":process.env.APP_URL||"https://movienight-production-cb51.up.railway.app",
+      "X-Title":"Movie Night"
+    },
+    body:JSON.stringify({
+      model:process.env.OPENROUTER_MODEL||"openrouter/free",
+      messages:[
+        {role:"system",content:"Return only valid JSON. No web search. Never fabricate facts."},
+        {role:"user",content:prompt}
+      ],
+      temperature:0
+    })
+  });
+  if(!response.ok) return candidates;
+  const data=await response.json();
+  const text=data?.choices?.[0]?.message?.content||"";
+  const match=text.match(/\{[\s\S]*\}/);
+  if(!match) return candidates;
+  try{
+    const parsed=JSON.parse(match[0]);
+    const updates=new Map((parsed.results||[]).map(x=>[Number(x.i),x]));
+    return candidates.map((x,i)=>{
+      const u=updates.get(i);
+      return u?{...x,originalAudio:!!u.originalAudio,persianSubtitle:!!u.persianSubtitle,persianDub:!!u.persianDub}:x;
+    });
+  }catch{return candidates}
+}
+
+app.get("/api/config",(req,res)=>res.json({
+  movieSearch:!!process.env.TMDB_API_KEY,
+  archiveSearch:true,
+  aiEnrichment:!!process.env.OPENROUTER_API_KEY
+}));
 
 app.get("/api/search",async(req,res)=>{
   const q=String(req.query.q||"").trim().slice(0,120);
   if(!q) return res.status(400).json({error:"Enter a movie name."});
-  if(!process.env.OPENROUTER_API_KEY) return res.status(503).json({error:"OPENROUTER_API_KEY is not configured on Railway yet."});
-
-  const prompt="You are the movie-search assistant for a watch-party website. Search the web for the movie requested by the user: \""+q+"\". Return ONLY valid JSON in this exact shape: {\"results\":[{\"title\":\"string\",\"year\":\"string\",\"overview\":\"short string\",\"originalAudio\":true,\"persianSubtitle\":true,\"persianDub\":false,\"playable\":true,\"videoUrl\":\"https://...\",\"subtitleFaUrl\":\"https://...\",\"sourceName\":\"string\",\"sourceUrl\":\"https://...\"}]}. Rules: Prefer sources that explicitly permit streaming/embedding and public-domain, Creative Commons, or otherwise authorized video. Never invent URLs. If you cannot verify a direct playable video URL, set playable=false and videoUrl=\"\". A Persian subtitle counts only when you found an actual ready-made Persian subtitle resource; do not generate one. Persian dub counts only when a source explicitly says a Persian dubbed track exists. For normal copyrighted movies, do not claim random piracy sites are authorized. Keep at most 6 results.";
 
   try{
-    const response=await fetch("https://openrouter.ai/api/v1/chat/completions",{
-      method:"POST",
-      headers:{
-        "Authorization":"Bearer "+process.env.OPENROUTER_API_KEY,
-        "Content-Type":"application/json",
-        "HTTP-Referer":process.env.APP_URL||"https://movienight.up.railway.app",
-        "X-Title":"Movie Night"
-      },
-      body:JSON.stringify({
-        model:process.env.OPENROUTER_MODEL||"openrouter/free",
-        plugins:[{id:"web",max_results:8}],
-        messages:[
-          {role:"system",content:"You are a careful web research assistant. Never fabricate sources or URLs."},
-          {role:"user",content:prompt}
-        ],
-        temperature:0.1
-      })
-    });
-    const data=await response.json();
-    if(!response.ok) throw new Error(data?.error?.message||("OpenRouter HTTP "+response.status));
-    const text=data?.choices?.[0]?.message?.content||"";
-    const match=text.match(/\{[\s\S]*\}/);
-    if(!match) throw new Error("AI did not return JSON.");
-    const parsed=JSON.parse(match[0]);
-    const results=Array.isArray(parsed.results)?parsed.results.map(x=>({
-      title:String(x.title||q).slice(0,160),
-      year:String(x.year||"").slice(0,20),
-      overview:String(x.overview||"").slice(0,400),
-      originalAudio:!!x.originalAudio,
-      persianSubtitle:!!x.persianSubtitle,
-      persianDub:!!x.persianDub,
-      playable:!!x.playable&&!!cleanUrl(x.videoUrl),
-      videoUrl:cleanUrl(x.videoUrl),
-      subtitleFaUrl:cleanUrl(x.subtitleFaUrl),
-      sourceName:String(x.sourceName||"").slice(0,100),
-      sourceUrl:cleanUrl(x.sourceUrl)
-    })).filter(x=>x.title):[];
-    res.json({results});
+    const [tmdb,archive]=await Promise.all([
+      tmdbSearch(q).catch(e=>{console.error("TMDB search:",e.message);return []}),
+      archiveSearch(q).catch(e=>{console.error("Archive search:",e.message);return []})
+    ]);
+    let results=[...archive,...tmdb];
+    const seen=new Set();
+    results=results.filter(x=>{
+      const k=(x.title+"|"+x.year).toLowerCase();
+      if(seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }).slice(0,12);
+    results=await freeAiEnrich(q,results);
+    res.json({results,meta:{tmdb:tmdb.length>0,archive:archive.length>0,ai:!!process.env.OPENROUTER_API_KEY}});
   }catch(error){
-    console.error("AI search error:",error);
-    res.status(502).json({error:"AI search failed. Check the OpenRouter key/model in Railway.",details:error.message});
+    console.error("Movie search error:",error);
+    res.status(502).json({error:"Movie search failed.",details:error.message});
   }
 });
 
