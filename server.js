@@ -36,6 +36,29 @@ function isAuthorizedArchiveItem(meta){
   return /public domain|publicdomain|creative commons|creativecommons|cc by|cc0|no known copyright/i.test(text);
 }
 
+function linkSource(value){
+  const url=cleanUrl(value);
+  if(!url) return null;
+  const lower=url.toLowerCase();
+  const direct=/\\.(mp4|webm|ogv|ogg)(\\?|$)/i.test(lower);
+  let embedUrl=url;
+  try{
+    const u=new URL(url);
+    if(/(^|\\.)aparat\\.com$/i.test(u.hostname)||/(^|\\.)aparat\.ir$/i.test(u.hostname)){
+      // Keep official Aparat page/embed URLs as-is; the browser will only embed
+      // them when Aparat permits embedding for that video.
+      embedUrl=u.toString();
+    }
+  }catch{}
+  return {url,mode:direct?"video":"embed",embedUrl};
+}
+
+app.get("/api/play-link",(req,res)=>{
+  const source=linkSource(req.query.url);
+  if(!source) return res.status(400).json({error:"لینک معتبر http/https وارد کن."});
+  res.json({source});
+});
+
 async function omdbSearch(q){
   const key=process.env.OMDB_API_KEY;
   if(!key) return [];
