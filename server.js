@@ -85,7 +85,7 @@ app.get("/api/play-link",(req,res)=>{
   res.json({source});
 });
 
-app.get("/api/media/config",(req,res)=>res.json({configured:mediaConfigured(),bucket:SUPABASE_BUCKET,publishableKey:process.env.SUPABASE_PUBLISHABLE_KEY||""}));
+app.get("/api/media/config",(req,res)=>res.json({configured:mediaConfigured(),bucket:SUPABASE_BUCKET,url:SUPABASE_URL,publishableKey:process.env.SUPABASE_PUBLISHABLE_KEY||""}));
 
 app.post("/api/media/upload-url",async(req,res)=>{
   if(!supabase) return res.status(503).json({error:"Supabase Storage هنوز به Railway وصل نشده است."});
