@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname,"public")));
 const rooms=new Map();
 
 function roomState(roomId){
-  if(!rooms.has(roomId)) rooms.set(roomId,{movie:null,playing:false,currentTime:0,updatedAt:Date.now(),users:new Map(),hostId:null,storagePath:null});
+  if(!rooms.has(roomId)) rooms.set(roomId,{movie:null,playing:false,currentTime:0,updatedAt:Date.now(),users:new Map(),hostId:null,storagePath:null,chat:[]});
   return rooms.get(roomId);
 }
 function cleanUrl(value){
@@ -189,6 +189,7 @@ io.on("connection",socket=>{
     room.users.set(socket.id,socket.data.name);
     if(movie&&!room.movie)room.movie=movie;
     socket.emit("room:state",{movie:room.movie,playing:room.playing,currentTime:effectiveTime(room),users:[...room.users.values()],isHost:room.hostId===socket.id});
+    socket.emit("chat:history",room.chat||[]);
     io.to(roomId).emit("room:users",{users:[...room.users.values()]});
   });
 
@@ -204,7 +205,7 @@ io.on("connection",socket=>{
     room.movie=movie;room.playing=false;room.currentTime=0;room.updatedAt=Date.now();io.to(roomId).emit("room:movie",{movie});
   });
 
-  socket.on("chat:message",({roomId,message})=>{const text=String(message||"").trim().slice(0,500);if(!text)return;io.to(roomId).emit("chat:message",{name:socket.data.name||"Guest",message:text,time:Date.now()})});
+  socket.on("chat:message",({roomId,message})=>{\n    const room=rooms.get(roomId);\n    const text=String(message||"").trim().slice(0,500);\n    if(!room||!text||!socket.data.roomId||socket.data.roomId!==roomId)return;\n    const msg={name:socket.data.name||"Guest",message:text,time:Date.now()};\n    room.chat=room.chat||[];room.chat.push(msg);if(room.chat.length>100)room.chat.shift();\n    io.to(roomId).emit("chat:message",msg);\n  });
 
   socket.on("player:ended",async({roomId})=>{
     const room=rooms.get(roomId);if(!room||room.hostId!==socket.id)return;
