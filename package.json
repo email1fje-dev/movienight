@@ -1,9 +1,9 @@
 {
   "name":"movienight",
-  "version":"2.0.0",
+  "version":"3.0.0",
   "private":true,
-  "description":"AI-powered Movie Night watch-party with synchronized playback, Persian subtitles and live chat.",
+  "description":"Movie Night watch-party with Supabase Storage, synchronized playback and live chat.",
   "main":"server.js",
   "scripts":{"start":"node server.js","dev":"node server.js"},
-  "dependencies":{"express":"^5.1.0","socket.io":"^4.8.1"}
+  "dependencies":{"express":"^5.1.0","socket.io":"^4.8.1","@supabase/supabase-js":"^2.57.4"}
 }
