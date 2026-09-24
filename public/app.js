@@ -187,7 +187,11 @@ socket.on("player:change",s=>{
 });
 socket.on("room:movie",({movie})=>setMovie(movie));
 socket.on("room:users",({users})=>renderUsers(users));
-socket.on("chat:history",messages=>{\n  $("#messages").innerHTML="";\n  for(const m of messages||[]) appendChat(m);\n});\nfunction appendChat(m){
+socket.on("chat:history",messages=>{
+  $("#messages").innerHTML="";
+  for(const m of messages||[]) appendChat(m);
+});
+function appendChat(m){
   const d=document.createElement("div");d.className="msg";d.innerHTML="<b>"+escapeHtml(m.name)+"</b> <span>"+escapeHtml(m.message)+"</span>";
   $("#messages").appendChild(d);$("#messages").scrollTop=$("#messages").scrollHeight;
 });
