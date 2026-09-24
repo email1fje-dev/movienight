@@ -40,12 +40,34 @@ async function search(){
   finally{$("#searchBtn").disabled=false}
 }
 
+async function playByLink(){
+  const input=$("#playLinkInput"), status=$("#playLinkStatus");
+  const url=input.value.trim(); if(!url) return;
+  status.textContent="⏳ در حال بررسی لینک...";
+  $("#playLinkBtn").disabled=true;
+  try{
+    const r=await fetch("/api/play-link?url="+encodeURIComponent(url));
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error||"لینک معتبر نیست");
+    const source=data.source;
+    roomId=makeRoom(); isHost=true;
+    history.replaceState(null,"",location.pathname+"?room="+roomId);
+    showWatch();
+    setMovie({title:"پخش با لینک",year:"",sourceName:source.mode==="embed"?"Embed":"Direct URL",playable:true,videoUrl:source.mode==="video"?source.url:"",embedUrl:source.mode==="embed"?source.embedUrl:"",subtitleFaUrl:""});
+    $("#roomCode").textContent=roomId;
+    socket.emit("room:join",{roomId,name:"Guest",movie:currentMovie});
+    status.textContent="✅ لینک آماده شد";
+  }catch(e){status.textContent="❌ "+e.message}
+  finally{$("#playLinkBtn").disabled=false}
+}
+
 function setMovie(movie){
   currentMovie=movie;
   $("#title").textContent=movie.title;
   $("#meta").textContent=[movie.year,movie.sourceName].filter(Boolean).join(" • ");
   video.pause();video.innerHTML="";
-  $("#noVideo").classList.toggle("hidden",!!movie.videoUrl);
+  const oldFrame=$("#embedFrame"); if(oldFrame) oldFrame.remove();
+  $("#noVideo").classList.toggle("hidden",!!movie.videoUrl||!!movie.embedUrl);
   if(movie.videoUrl){
     const s=document.createElement("source");s.src=movie.videoUrl;
     const ext=(movie.videoUrl.match(/\.([a-z0-9]+)(?:\?|$)/i)||[])[1]?.toLowerCase();
@@ -53,6 +75,13 @@ function setMovie(movie){
     video.appendChild(s);
     if(movie.subtitleFaUrl){const t=document.createElement("track");t.src=movie.subtitleFaUrl;t.kind="subtitles";t.srclang="fa";t.label="فارسی";t.default=true;video.appendChild(t)}
     video.load();
+  } else if(movie.embedUrl){
+    const frame=document.createElement("iframe");
+    frame.id="embedFrame"; frame.src=movie.embedUrl; frame.title=movie.title||"Video";
+    frame.allow="autoplay; fullscreen; picture-in-picture"; frame.allowFullscreen=true;
+    frame.referrerPolicy="strict-origin-when-cross-origin";
+    frame.style.cssText="width:100%;height:100%;border:0;min-height:420px;background:#000";
+    $(".player-wrap").prepend(frame);
   }
 }
 function createRoom(movie){
@@ -89,6 +118,8 @@ function renderUsers(users){$("#users").innerHTML=users.map(u=>'<div class="user
 async function copy(){await navigator.clipboard?.writeText(location.href);$("#copyRoom").textContent="کپی شد ✓";setTimeout(()=>$("#copyRoom").textContent="🔗 کپی لینک اتاق",1200)}
 
 $("#searchBtn").onclick=search;
+$("#playLinkBtn").onclick=playByLink;
+$("#playLinkInput").onkeydown=e=>{if(e.key==="Enter")playByLink()};
 $("#searchInput").onkeydown=e=>{if(e.key==="Enter")search()};
 $("#copyRoom").onclick=copy;$("#copyRoom2").onclick=copy;
 $("#leave").onclick=()=>location.href=location.pathname;
