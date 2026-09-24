@@ -205,7 +205,14 @@ io.on("connection",socket=>{
     room.movie=movie;room.playing=false;room.currentTime=0;room.updatedAt=Date.now();io.to(roomId).emit("room:movie",{movie});
   });
 
-  socket.on("chat:message",({roomId,message})=>{\n    const room=rooms.get(roomId);\n    const text=String(message||"").trim().slice(0,500);\n    if(!room||!text||!socket.data.roomId||socket.data.roomId!==roomId)return;\n    const msg={name:socket.data.name||"Guest",message:text,time:Date.now()};\n    room.chat=room.chat||[];room.chat.push(msg);if(room.chat.length>100)room.chat.shift();\n    io.to(roomId).emit("chat:message",msg);\n  });
+  socket.on("chat:message",({roomId,message})=>{
+    const room=rooms.get(roomId);
+    const text=String(message||"").trim().slice(0,500);
+    if(!room||!text||!socket.data.roomId||socket.data.roomId!==roomId)return;
+    const msg={name:socket.data.name||"Guest",message:text,time:Date.now()};
+    room.chat=room.chat||[];room.chat.push(msg);if(room.chat.length>100)room.chat.shift();
+    io.to(roomId).emit("chat:message",msg);
+  });
 
   socket.on("player:ended",async({roomId})=>{
     const room=rooms.get(roomId);if(!room||room.hostId!==socket.id)return;
