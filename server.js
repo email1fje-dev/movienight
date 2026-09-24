@@ -50,15 +50,21 @@ async function loadDbRoom(roomId){
   if(error) throw error;
   if(!data) return null;
   const room=roomState(roomId);
-  room.storagePath=data.storage_path;
-  room.movie={title:data.title||"Movie",year:"",sourceName:"Supabase Storage",playable:true,videoUrl:await signedPlayback(data.storage_path),embedUrl:"",subtitleFaUrl:""};
+  room.storagePath=data.storage_path||null;
+  const sourceUrl=cleanUrl(data.source_url||"");
+  const sourceMode=data.source_mode==="embed"?"embed":"video";
+  if(sourceUrl){
+    room.movie={title:data.title||"Movie",year:"",sourceName:sourceMode==="embed"?"Embed":"Direct URL",playable:true,videoUrl:sourceMode==="video"?sourceUrl:"",embedUrl:sourceMode==="embed"?sourceUrl:"",subtitleFaUrl:""};
+  }else{
+    room.movie={title:data.title||"Movie",year:"",sourceName:"Supabase Storage",playable:true,videoUrl:await signedPlayback(data.storage_path),embedUrl:"",subtitleFaUrl:""};
+  }
   room.currentTime=Number(data.position_seconds)||0;
   room.playing=!!data.playing;
   room.updatedAt=new Date(data.updated_at||data.created_at).getTime();
   return room;
 }
 async function persistRoom(roomId,room){
-  if(!supabase||!room.storagePath) return;
+  if(!supabase) return;
   const {error}=await supabase.from("movie_rooms").update({
     position_seconds:Number(effectiveTime(room).toFixed(3)),
     playing:!!room.playing,
@@ -79,6 +85,19 @@ function linkSource(value){
   const direct=/\.(mp4|webm|ogv|ogg)(\?|$)/i.test(url);
   return {url,mode:direct?"video":"embed",embedUrl:url};
 }
+app.post("/api/play-link/room",async(req,res)=>{
+  if(!supabase) return res.status(503).json({error:"Supabase Storage هنوز به Railway وصل نشده است."});
+  const source=linkSource(req.body?.url);
+  if(!source) return res.status(400).json({error:"لینک معتبر http/https وارد کن."});
+  const roomId=cleanText(req.body?.roomId,32).replace(/[^A-Z0-9_-]/gi,"");
+  const title=cleanText(req.body?.title||"پخش با لینک",160);
+  if(!roomId) return res.status(400).json({error:"Room ID نامعتبر است."});
+  const row={room_id:roomId,storage_path:null,source_url:source.url,source_mode:source.mode,title,duration_seconds:0,position_seconds:0,playing:false,host_id:null,expires_at:new Date(Date.now()+6*60*60*1000).toISOString(),updated_at:new Date().toISOString()};
+  const {error}=await supabase.from("movie_rooms").upsert(row,{onConflict:"room_id"});
+  if(error) return res.status(500).json({error:"ذخیره اتاق لینک شکست خورد.",details:error.message});
+  res.json({roomId,movie:{title,year:"",sourceName:source.mode==="embed"?"Embed":"Direct URL",playable:true,videoUrl:source.mode==="video"?source.url:"",embedUrl:source.mode==="embed"?source.url:"",subtitleFaUrl:""},expiresAt:row.expires_at});
+});
+
 app.get("/api/play-link",(req,res)=>{
   const source=linkSource(req.query.url);
   if(!source) return res.status(400).json({error:"لینک معتبر http/https وارد کن."});
@@ -177,7 +196,7 @@ io.on("connection",socket=>{
     const room=rooms.get(roomId);if(!room||room.hostId!==socket.id)return;
     room.playing=!!playing;room.currentTime=Math.max(0,Number(currentTime)||0);room.updatedAt=Date.now();if(movie)room.movie=movie;
     socket.to(roomId).emit("player:change",{playing:room.playing,currentTime:room.currentTime,movie:room.movie});
-    if(room.storagePath)persistRoom(roomId,room);
+    persistRoom(roomId,room);
   });
 
   socket.on("room:movie",({roomId,movie})=>{
@@ -190,14 +209,21 @@ io.on("connection",socket=>{
   socket.on("player:ended",async({roomId})=>{
     const room=rooms.get(roomId);if(!room||room.hostId!==socket.id)return;
     room.playing=false;room.currentTime=0;room.updatedAt=Date.now();io.to(roomId).emit("player:ended");
-    if(room.users.size===0)await deleteStoredRoom(roomId,room.storagePath);
+    if(room.users.size===0){
+      if(room.storagePath) await deleteStoredRoom(roomId,room.storagePath);
+      else if(supabase) await supabase.from("movie_rooms").delete().eq("room_id",roomId);
+    }
   });
 
   socket.on("disconnect",async()=>{
     const roomId=socket.data.roomId;if(!roomId)return;
     const room=rooms.get(roomId);if(!room)return;
     room.users.delete(socket.id);if(room.hostId===socket.id)room.hostId=room.users.keys().next().value||null;
-    if(room.users.size===0){if(room.storagePath)await deleteStoredRoom(roomId,room.storagePath);rooms.delete(roomId)}
+    if(room.users.size===0){
+      if(room.storagePath) await deleteStoredRoom(roomId,room.storagePath);
+      else if(supabase) await supabase.from("movie_rooms").delete().eq("room_id",roomId);
+      rooms.delete(roomId);
+    }
     else io.to(roomId).emit("room:users",{users:[...room.users.values()]});
   });
 });
